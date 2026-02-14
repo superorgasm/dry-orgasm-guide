@@ -1,6 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const DOCS_DIR = path.join(__dirname, "docs");
 const SRC_DIR = path.join(__dirname, "src");
@@ -19,9 +20,9 @@ if (fs.existsSync(DOCS_DIR)) {
   fs.rmSync(DOCS_DIR, { recursive: true });
 }
 
-// 2. src/ を docs/ にコピー
+// 2. src/ を docs/ にコピー（テンプレートファイルは除外）
 console.log("Copying src/ -> docs/...");
-copyDirSync(SRC_DIR, DOCS_DIR);
+copyDirSync(SRC_DIR, DOCS_DIR, ["password_template.html"]);
 
 // 3. HTML ファイルを検索（docs/ からの相対パスで取得）
 const htmlFiles = findFiles(DOCS_DIR, ".html");
@@ -32,19 +33,34 @@ relativeFiles.forEach((f) => console.log(`  - ${f}`));
 // 4. StatiCrypt で各HTMLファイルを個別に暗号化
 console.log("\nEncrypting with StatiCrypt...");
 const configPath = path.join(__dirname, ".staticrypt.json");
-const templateOptions = [
-  "--short",
-  "--remember 30",
-  '--template-title "Protected Page"',
-  '--template-instructions "ガイド購入者向けページです。パスワードを入力してください。"',
-  '--template-button "認証"',
-  '--template-placeholder "パスワード"',
-  '--template-remember "ログイン状態を保持（30日間）"',
-  '--template-error "パスワードが違います"',
-].join(" ");
+const templateSrcPath = path.join(SRC_DIR, "password_template.html");
+const templateContent = fs.readFileSync(templateSrcPath, "utf8");
 
 for (const relFile of relativeFiles) {
   const outDir = path.dirname(relFile) === "." ? "." : path.dirname(relFile);
+
+  // ファイルの深さに応じてカバー画像の相対パスを計算
+  const depth = relFile.split(path.sep).length - 1;
+  const imagePrefix = "../".repeat(depth);
+  const coverImagePath = imagePrefix + "cover-image.jpg";
+
+  // テンプレートのカバー画像パスを置換して一時ファイルに書き出し
+  const resolvedTemplate = templateContent.replace("COVER_IMAGE_PATH", coverImagePath);
+  const tmpTemplatePath = path.join(os.tmpdir(), `password_template_${depth}.html`);
+  fs.writeFileSync(tmpTemplatePath, resolvedTemplate);
+
+  const templateOptions = [
+    "--short",
+    "--remember 30",
+    `--template "${tmpTemplatePath}"`,
+    '--template-title "Protected Page"',
+    '--template-instructions "ガイド購入者向けページです。パスワードを入力してください。"',
+    '--template-button "認証"',
+    '--template-placeholder "パスワード"',
+    '--template-remember "ログイン状態を保持（30日間）"',
+    '--template-error "パスワードが違います"',
+  ].join(" ");
+
   console.log(`  Encrypting: ${relFile} -> ${outDir}/`);
   execSync(
     `npx staticrypt "${relFile}" -p "${password}" -d "${outDir}" --config "${path.relative(DOCS_DIR, configPath)}" ${templateOptions}`,
@@ -56,14 +72,14 @@ console.log("\nBuild complete! Encrypted files are in docs/");
 
 // --- Helper functions ---
 
-function copyDirSync(src, dest) {
+function copyDirSync(src, dest, excludeFiles = []) {
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
-      copyDirSync(srcPath, destPath);
-    } else {
+      copyDirSync(srcPath, destPath, excludeFiles);
+    } else if (!excludeFiles.includes(entry.name)) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
