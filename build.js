@@ -45,7 +45,7 @@ for (const relFile of relativeFiles) {
   const coverImagePath = imagePrefix + "cover-image.jpg";
 
   // テンプレートのカバー画像パスを置換して一時ファイルに書き出し
-  const resolvedTemplate = templateContent.replace("COVER_IMAGE_PATH", coverImagePath);
+  const resolvedTemplate = templateContent.replaceAll("COVER_IMAGE_PATH", coverImagePath);
   const tmpTemplatePath = path.join(os.tmpdir(), `password_template_${depth}.html`);
   fs.writeFileSync(tmpTemplatePath, resolvedTemplate);
 
