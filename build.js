@@ -5,6 +5,8 @@ const os = require("os");
 
 const DOCS_DIR = path.join(__dirname, "docs");
 const SRC_DIR = path.join(__dirname, "src");
+const COVER_IMAGE_URL =
+  "https://raw.githubusercontent.com/superorgasm/dry-orgasm-guide/main/src/cover-image.jpg";
 
 // パスワード取得（引数 or 環境変数）
 const password = process.argv[2] || process.env.STATICRYPT_PASSWORD;
@@ -22,11 +24,19 @@ if (fs.existsSync(DOCS_DIR)) {
 
 // 2. src/ を docs/ にコピー（テンプレートファイルは除外）
 console.log("Copying src/ -> docs/...");
-copyDirSync(SRC_DIR, DOCS_DIR, ["password_template.html"]);
+copyDirSync(SRC_DIR, DOCS_DIR, ["password_template.html", "cover-image.jpg"]);
 
 // 3. HTML ファイルを検索（docs/ からの相対パスで取得）
 const htmlFiles = findFiles(DOCS_DIR, ".html");
 const relativeFiles = htmlFiles.map((f) => path.relative(DOCS_DIR, f));
+
+// 3.5 画像ファイルを配布物に含めないため、cover-image.jpg 参照を外部URLに統一
+for (const htmlPath of htmlFiles) {
+  const html = fs.readFileSync(htmlPath, "utf8");
+  const rewritten = html.replaceAll("cover-image.jpg", COVER_IMAGE_URL);
+  fs.writeFileSync(htmlPath, rewritten);
+}
+
 console.log(`Found ${relativeFiles.length} HTML files to encrypt:`);
 relativeFiles.forEach((f) => console.log(`  - ${f}`));
 
@@ -39,14 +49,12 @@ const templateContent = fs.readFileSync(templateSrcPath, "utf8");
 for (const relFile of relativeFiles) {
   const outDir = path.dirname(relFile) === "." ? "." : path.dirname(relFile);
 
-  // ファイルの深さに応じてカバー画像の相対パスを計算
-  const depth = relFile.split(path.sep).length - 1;
-  const imagePrefix = "../".repeat(depth);
-  const coverImagePath = imagePrefix + "cover-image.jpg";
-
   // テンプレートのカバー画像パスを置換して一時ファイルに書き出し
-  const resolvedTemplate = templateContent.replaceAll("COVER_IMAGE_PATH", coverImagePath);
-  const tmpTemplatePath = path.join(os.tmpdir(), `password_template_${depth}.html`);
+  const resolvedTemplate = templateContent.replaceAll("COVER_IMAGE_PATH", COVER_IMAGE_URL);
+  const tmpTemplatePath = path.join(
+    os.tmpdir(),
+    `password_template_${Buffer.from(relFile).toString("hex")}.html`
+  );
   fs.writeFileSync(tmpTemplatePath, resolvedTemplate);
 
   const templateOptions = [
